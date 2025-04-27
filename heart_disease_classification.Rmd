@@ -1,0 +1,309 @@
+---
+title: "Heart Disease Classification: Data Exploration, Model Building, and Evaluation"
+author: "Tharina Messeroux"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(rpart)
+library(caret)
+library(rpart.plot)
+library(rsample)
+library(readxl)
+library(ggplot2)
+library(patchwork)
+library(pROC)
+
+
+```
+
+## Summary
+
+This program covers the process of exploring a heart disease dataset and building classification models to predict heart disease status. The analysis includes visualizing distributions of continuous variables, splitting the dataset into training and test sets, training classification models (CART and logistic regression), and evaluating the models based on ROC/AUC scores. The final model is evaluated on the test set and its performance is compared with cross-validation results from both models.
+
+## Question 1
+
+### a)
+
+Read in the data in `heart_clean.csv`. The data contains various predictors of heart disease and an indicator variable of whether the disease is present. Information on the predictors can be found at https://www.kaggle.com/johnsmith88/heart-disease-dataset.
+
+```{r}
+
+heart_disease <- read_csv('data/heart_clean.csv')
+
+```
+
+
+### b)
+
+We wish to visualize the distribution of the variables `age`, `chol`, `max_heart_rate`, and `resting_bp` across disease status. Recreate the plot below. Use (1) set position = "identity" and alpha = 0.6 in geom_histogram to create the overlapping histograms and (2) set the theme using theme_minimal().
+
+![](data/plot.jpeg)
+
+```{r}
+
+long_data <- heart_disease %>%
+  select(...1, age, chol, max_heart_rate, resting_bp, disease)%>%
+  mutate(disease = factor(disease))%>%
+  pivot_longer(cols = 2:5,
+                 values_to = "value",
+                 names_to = "variable")
+
+
+library(ggplot2)
+
+# Assuming 'long_data' contains a column named 'disease' indicating disease status
+
+ggplot(data = long_data) +
+  geom_histogram(aes(x = value, fill = disease), position = "identity", alpha = 0.6, bins = 30) +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Histogram of Continuous Variables Across Disease Status", x = "") +
+  theme(legend.position = "bottom")
+
+
+
+
+```
+
+### c)
+
+(1) Show the overall distribution of heart disease in the total dataset.
+
+(2) Create a factor variable `disease_fac` with "Positive" and "Negative" levels. Ensure that "Positive" is the second level of the factor.
+
+(3) Remove the id variable from the dataset and the original `disease` variable. The ID variable may have been read in as `X1`.
+
+(4) Before you split the data, set the seed to 5 in order to get reproducible results i.e run the line: `set.seed(5)`.
+
+(5) Then split the data into a training and test set using a 75% split.
+
+(6) Make sure the distribution of those positive for heart disease is similar in your training and test sets -- you can do this with a visualization or a table.
+
+```{r}
+
+# (1) Show the overall distribution of heart disease in the total dataset.
+overall_distribution <- heart_disease %>%
+  group_by(disease) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+overall_distribution
+
+
+# (2) Create a factor variable disease_fac with "Positive" and "Negative" levels.
+heart_disease <- heart_disease %>%
+  mutate(disease_fac = factor(disease, levels = c(0,1), labels = c("Negative", "Positive")))
+
+
+overall_distribution_fac <- heart_disease %>%
+  group_by(disease_fac) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+overall_distribution_fac
+
+
+# (3) Remove the id variable from the dataset and the original disease variable.
+heart_disease <- heart_disease %>%
+  select(-...1, -disease)
+
+# (4) Set the seed to 5 for reproducibility.
+set.seed(5)
+
+#install.packages('rsample')
+library(rsample)
+
+split_data <- initial_split(heart_disease, prop = 0.75, strata = disease_fac)
+
+train_dat <- training(split_data)
+
+test_dat <- testing(split_data)
+
+
+
+# Take a look at percentage of high bmi in each data set
+train_summary <- train_dat %>%
+  group_by(disease_fac) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+test_summary <- test_dat %>%
+  group_by(disease_fac) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+train_summary
+
+test_summary
+
+
+
+```
+
+### d)
+
+Train a classification tree (using `caret`) to classify heart disease status using all the variables in the data using 10-fold cross-validation. Have the cross-validation process consider `cp` values in the range of the `cp_grid` matrix below. You can do this by setting the tuneGrid argument in the `train()` function equal to cp_grid. Also ensure that you are using ROC/AUC and **NOT Accuracy** as your metric for model tuning. For code that will do this, check out this week's R Videos and lab.
+
+```{r}
+
+cp_grid <- expand.grid(cp = seq(from = 0.015, to = 0.1, by = 0.001))
+
+
+## Tuning based on ROC/AUC instead of Accuracy
+cart_cv_auc <- train(
+  form = disease_fac ~ ., # formula
+  data = train_dat, # training data
+  method = "rpart", # CART
+  trControl = trainControl(method = "cv", 
+                           number = 10, 
+                           summaryFunction = twoClassSummary, # add this to obtain ROC
+                           classProbs = TRUE, # add this to obtain ROC
+                           savePredictions = "final"), # add this options to save predictions for plotting ROC/AUC
+  metric = "ROC", # Indicate you do not want to use Accuracy, but instead ROC/AUC
+  tuneGrid = cp_grid
+  )
+
+
+
+```
+
+### e)
+
+Plot the cross-validated model ROC/AUC vs different complexity parameters and report which value maximizes performance (report in a sentence what the best reported ROC/AUC was).
+
+```{r}
+
+plot(cart_cv_auc)
+
+best_tune <- cart_cv_auc$bestTune
+
+ROC_val <- cart_cv_auc$results %>%
+  filter(ROC == max(ROC)) %>%
+  filter(cp == as.character(best_tune)) %>%
+  pull(ROC)
+
+
+```
+
+
+The best reported ROC/AUC is `r ROC_val `.
+
+
+### f)
+
+Create a plot/diagram of the best (final) classification tree model from the cross-validation process on the training data using `rpart.plot`. In order to see the plot properly you may have to knit your HTML, we have included `fig.width` and `fig.height` options in the code chunk below to create a big enough plot to read.
+
+```{r, fig.width = 8, fig.height = 6}
+
+
+final_model_auc <- cart_cv_auc$finalModel
+
+rpart.plot(cart_cv_auc$finalModel)
+
+
+```
+
+### g)
+
+Take a look at your classification tree diagram from (f) (it may be easier to look at in a knit html. What is the root node of the tree and what is the splitting rule at the root node? How many leaf nodes are there in this tree?.
+
+The root node of the tree is chest pain score, with the spliting rule of < 1 vs >= 1. The left side representing "yes" for having a chest pain score of < 1, and the right side for NOT having a chest pain score of < 1, meaning having a chest pain score >= 1. There are 10 leaf nodes in this tree. 
+
+
+### h)
+
+Using your classification tree diagram from (f), trace the path of a person who is 60 years old, has a chest pain score of 1, __a cholesterol value of 260__, is in the sex = 1 category, has a thalamus score of 2, and a num_vessel score of 0. Will your classification tree predict that this person has heart disease or not? Which leaf node does this person end up in? (you can count starting from the left side of the graph).
+
+
+For a person who is 60 years old, has a chest pain score of 1, __a cholesterol value of 260__, is in the sex = 1 category, has a thalamus score of 2, and a num_vessel score of 0, the tree will predict that they do not have heart disease. This person will end up in the 6th leaf node. 
+
+
+
+### i)
+
+Train a logistic regression model (using `caret`) to classify heart disease status using all the variables in the data. Report the cross-validated ROC/AUC (10-fold) of this model on the training dataset.
+
+```{r}
+
+
+logistic_cv_auc <- train(
+  form = disease_fac ~ ., # include everything as predictors
+  data = train_dat,
+  trControl = trainControl(method = "cv", 
+                           number = 10, 
+                           summaryFunction = twoClassSummary, # add this to obtain ROC
+                           classProbs = TRUE, # add this to obtain ROC
+                           savePredictions = "final"), # add this options to save predictions for plotting ROC/AUC
+  metric = "ROC", # Indicate you do not want to use Accuracy, but instead ROC/AUC
+  method = "glm",
+  family = "binomial"
+)
+
+
+logistic_cv_auc$results %>%
+  pull(ROC)
+
+broom::tidy(logistic_cv_auc$finalModel, exponentiate = TRUE) %>% View()
+
+
+
+```
+
+### j)
+
+Compare the cross-validated ROC/AUC of the classification tree and logistic regression model. You can do this with the `resamples()` and the `dotplot()` functions as we did in this week's R Videos. Which model performs better on the training data?
+
+```{r eval = FALSE}
+
+comparison <- resamples(list("Logistic"=logistic_cv_auc, 
+                             "CART" = cart_cv_auc))
+
+dotplot(comparison, metric = "ROC")
+
+
+```
+
+### k)
+
+Choose whichever model you think has the best cross-validated performance in the training data as your final model. Then create an ROC plot and report the AUC for your final model on the test set. What do you think -- based on its performance would you consider using this model to predict the presence of heart disease in future patients?
+
+```{r}
+
+
+log_pred_prob <- predict(logistic_cv_auc, newdata = test_dat, type = "prob") # type = "prob" gives you predicted probabilities
+
+log_test_pred_df <- test_dat %>%
+  bind_cols(log_pred_prob)
+
+log_test_roc <- roc(disease_fac ~ Positive, data = log_test_pred_df)
+
+ggroc(log_test_roc)
+
+auc(log_test_roc)
+
+# Updating ROC Curve
+
+ggroc(log_test_roc) +
+  theme_bw() +
+  labs(x = "Specificity",
+       y = "Sensitivity",
+       title = "ROC Curve") +
+  geom_abline(aes(intercept = 1, slope = 1), linetype = "dashed")
+
+#ggsave("roc_curve.png", width = 4, height = 4)
+
+# Obtain AUC using the auc() function:
+auc_log_test <- auc(log_test_roc)
+
+auc_log_test
+
+```
+
+
+I think the model with the best cross-validated performance in the training data is the logistic model. The AUC for the final model on the test set is `r auc_log_test`. Based on its performance, I would consider using this model to predict the presence of heart disease in future patients, given it's much higher than 0.7. 
