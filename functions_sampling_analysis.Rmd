@@ -1,0 +1,513 @@
+---
+title: "Functions, Data Joins, and the Central Limit Theorem"
+author: "Tharina Messeroux"
+date: "2/22/24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(janitor)
+library(gtsummary)
+library(ggplot2)
+
+```
+
+# Summary
+
+This document contains solutions to exercises involving custom R functions for data handling and visualization, dataset merging using relational joins, hypothesis testing for treatment outcomes, and an exploration of the Central Limit Theorem through simulation. Key skills demonstrated include function creation, data wrangling, t-tests, and graphical analysis using ggplot2.
+
+
+# Question 1
+
+### a) 
+
+Write a function that returns the fifth element of a vector. If the vector has a length smaller than 5, return a string that says "The input vector is too small!".
+
+```{r}
+
+return_fifth_element <- function(vector) {
+  if (length(vector) < 5) {
+    return("The input vector is too small!")
+  } else {
+    return(vector[5])
+  }
+}
+
+```
+
+### b) 
+
+Write a function that takes two arguments, `df` and `graph_type`. If `graph_type` equals "histogram", make a histogram; if graph_type equals "box plot" make a boxplot. The input `df` is a dataframe and the variable to graph will always be `obs`. Test your function by creating a histogram and a box plot of the dataset found in `data/distro_sim.csv`.
+
+```{r}
+
+graph_maker <- function(df, graph_type) {
+  if (graph_type == "histogram") {
+     hist_plot <- ggplot(data = df) +
+                geom_histogram(aes(x = obs), bins = 50)
+    return (hist_plot)}
+  if (graph_type == "boxplot"){
+     box_plot <- ggplot(data = df) +
+                geom_boxplot(aes(x = obs))
+          return (box_plot)
+     }
+}
+
+
+#testing
+# Load the dataset
+distro <- read_csv("distro_sim.csv")
+
+# Test the function with histogram
+graph_maker(distro, "histogram")
+
+# Test the function with histogram
+graph_maker(distro, "boxplot")
+
+```
+
+### c) 
+
+Improve the graphs in your function from part (b) by altering the themes, colors, titles, labels, or axes. Make two improvements to each graph in your function and then create a histogram and box plot of the `data/distro_sim.csv` dataset. Explain your improvements in sentences below your new graphs.
+
+```{r}
+
+graph_maker <- function(df, graph_type) {
+  if (graph_type == "histogram") {
+     hist_plot <- ggplot(data = df) +
+                geom_histogram(aes(x = obs), bins = 30, color = "purple", fill = "skyblue") +
+                labs(title = "Histogram of Observations", x = "Number of Observations", y = "Frequency") +
+                theme_minimal()
+    return (hist_plot)}
+  if (graph_type == "boxplot"){
+     box_plot <- ggplot(data = df) +
+                geom_boxplot(aes(x = "", y = obs), color = "purple", fill = "skyblue") +
+                labs(title = "Boxplot of Observations", x = "", y = "Number of Observations") +
+             theme_minimal()
+          return (box_plot)
+     }
+}
+
+# Test the function with histogram
+graph_maker(distro, "histogram")
+
+# Test the function with histogram
+graph_maker(distro, "boxplot")
+
+
+```
+
+Histogram:
+
+The x and y axes were in the histogram were labeled
+The number of bins was reduced 
+The fill and colors were changed 
+
+Boxplot:
+
+The y-axis was labeled
+The orientation was flipped from horizontal to vertical
+The fill and colors were changed 
+
+
+# Question 2
+
+### a)
+
+The goal of the code below is to write a function which, depending on user input, will randomly sample from different statistical distributions and create a histogram of the sampling result. Unfortunately, there are __6 errors__ in the code that are preventing it from working correctly. 
+
+Try to fix up the code to get it working -- once you do, give the function a better name and then call it three times to create three different histograms of 1000 samples (one for each distribution).
+
+__Note: The `rnorm()`, `rpois()`, and `runif()` functions are the correct functions to use, these functions don't need to be switched out for different functions.__
+
+**Make sure to set the code chunk option to `eval = TRUE` once you have the function working so it will show up in your HTML output!**
+
+```{r, eval = TRUE}
+
+hist_creator <- function(sample_size, distro_type, centrality_val, variation_val){  
+  if(distro_type == "Normal"){
+    samples <- rnorm(n = sample_size, mean = centrality_val, sd = variation_val)
+  }
+  if(distro_type == "Poisson"){
+    samples <- rpois(n = sample_size, lambda = centrality_val)
+  }
+  
+  if(distro_type == "Uniform"){
+    samples <- runif(n = sample_size)
+  }
+  
+  sampl_tib <- tibble(samp = samples)
+  
+  plot_out <- ggplot(data = sampl_tib) +
+    geom_histogram(aes(x = samp), fill = "blue", color = "white", bins = 20) +
+    theme_bw()
+  
+  return(plot_out)
+}
+
+hist_creator(1000, "Normal", 0, 1)
+hist_creator(1000, "Poisson", 10)
+hist_creator(1000, "Uniform")
+
+
+
+
+```
+
+
+1. distro_type vs distro
+2. Add samples <- to uniform dist 
+3. Add curly brackets to function statement 
+4. == vs = 
+5. blue in quote 
+6. aes mapping added 
+
+
+# Question 3
+
+You have received four separate datasets for a small study on the effectiveness of a new drug on depression and anxiety. The first dataset contains demographic data collected at admission and is saved as `data/study832_demos.csv`. The second dataset contains randomization information and is saved as `data/study832_randomization.csv`. The third dataset contains measurements of HAM-D and HAM-A at baseline and is saved as `data/study832_baseline.csv`. The fourth dataset contains measurements of HAM-D and HAM-A at the end of the study and is saved as `data/study832_study_end.xlsx`.
+
+### a)
+
+Load all four datasets into your R environment. Take a look at each dataset and report the primary key (unique identifier) of each dataset.
+
+```{r}
+
+demographics <- read_csv("study832_demos.csv")
+randomization <- read_csv("study832_randomization.csv")
+baseline_measurements <- read_csv("study832_baseline.csv")
+study_end <- read_excel("study832_study_end.xlsx", sheet = 3)
+
+```
+
+The primary key for the demographics table is study_id
+The primary key for the randomization table is patient_id
+The primary key for the baseline_measurements table is id
+The primary key for the end_measurements table is study_id
+
+
+### b)
+
+Join the demographic and randomization data frames together. Use a join that will drop any individuals who were not randomized.
+
+```{r}
+
+demo_rand <- randomization %>%
+  left_join(demographics,
+            by = c("patient_id" = "study_id" ))
+
+
+```
+
+### c) 
+
+Join the data frame from (b) with the baseline HAM-D and HAM-A dataset. Use a join that will drop any individuals who were not in the data frame from (b).
+
+```{r}
+
+demo_rand_bas <- demo_rand %>%
+  left_join(baseline_measurements,
+            by = c("patient_id" = "id" ))
+
+
+```
+
+### d) 
+
+Using the data frame from (c), join the outcome data from the `study832_study_end.xlsx` file and create new change score variables for change in HAM-D and change in HAM-A (the score at the end of the study minus the score at baseline). Use a join that will drop any individuals who were not in the data frame from (c). How many observations are missing values for HAM-A change and how many observations are missing values for HAM-D change?
+
+```{r}
+
+depression_join <- demo_rand_bas %>%
+  left_join(study_end,
+            by = c("patient_id" = "study_id" )) %>%
+  mutate(diff_hamd = outcome_hamd - baseline_hamd, diff_hama = outcome_hama - baseline_hama)
+
+#obs with missing values for diff_hama and diff_hmd
+missing_data_hamd <- sum(is.na(depression_join$diff_hamd))  
+print(missing_data_hamd)
+
+missing_data_hama <- sum(is.na(depression_join$diff_hama))  
+print(missing_data_hama)
+
+
+```
+
+
+There are 28 observations that are missing values for HAM-A change and HAM-D change
+
+
+### e)
+
+Create two boxplots: one which shows the distribution of HAM-A changes scores by treatment group, and one that shows HAM-D change scores by treatment group.
+
+```{r}
+
+box_plot_hamd <- ggplot(data = depression_join) +
+                geom_boxplot(aes(x = trx, y = diff_hama)) + 
+             theme_minimal()
+print(box_plot_hamd)
+
+box_plot_hama <- ggplot(data = depression_join) +
+                geom_boxplot(aes(x = trx, y = diff_hama)) + 
+             theme_minimal()
+print(box_plot_hama)
+
+```
+
+### f) 
+
+Use t-tests (unequal variance) to test the difference between treatment groups for change in HAM-D scores and change in HAM-A scores. Be sure to report the test statistic, p-value, and degrees of freedom for each test in your write-up.
+
+```{r}
+
+hamd_ttest <- t.test(diff_hamd ~ trx, data = depression_join)
+hamd_ttest
+hama_ttest <- t.test(diff_hama ~ trx, data = depression_join)
+hama_ttest
+
+
+
+```
+
+INTERPRETATION: 
+
+
+For HAMD - 
+The test statistics is `r round(hamd_ttest$statistic,4)` , the p-value is `r round(hamd_ttest$p.value,4)`, and degrees of freedom is `r round(hamd_ttest$parameter,4)`
+
+The p-value is `r round(hamd_ttest$p.value,4)`, which is greater than 0.05. Therefore, we do not have enough evidence to conclude that there is a significant difference in mean HAM-D changes between treatment groups, at the 5% significance level.
+
+For HAMA - 
+The test statistics is `r round(hama_ttest$statistic,4)` , the p-value is `r round(hama_ttest$p.value,4)`, and degrees of freedom is `r round(hama_ttest$parameter,4)`
+
+
+The p-value is `r round(hama_ttest$p.value,4)`, which is greater than 0.05. Therefore, we do not have enough evidence to conclude that there is a significant difference in mean HAM-A changes between treatment groups.
+
+
+# Question 4
+
+Let's show the Central Limit Theorem in action!
+
+It will be so much fun, it won't even feel like a homework problem!
+
+The CLT states that as we take more and more samples from ANY distribution, the distribution of the mean of these samples will approach a normal distribution.
+
+### a)
+
+Simulate two normal distributions and combine them into a tibble to create a bimodal distribution. To do this, create one tibble of 50,000 observations from a normal distribution with mean = 0 and sd = 1, and one tibble of 50,000 observations from a normal distribution with a mean between 5 and 10 and a standard deviation between 1 and 2 (you choose). Combine your simulated datasets using `bind_rows()`.
+
+
+```{r}
+# Code from last week:
+sample1 <- rnorm(n = 50000, mean = 0, sd = 1)
+tibble1 <- tibble(obs = sample1)
+
+sample2 <- rnorm(n = 50000, mean = 8, sd = 1.7)
+tibble2 <- tibble(obs = sample2)
+
+tibble_bind <- bind_rows(tibble1, tibble2)
+
+```
+
+
+### b)
+
+Use the function below called `get_mean()` on the bimodal distribution you created -- it will randomly sample n observations from a dataframe that you pass into it and calculate their mean, which gets returned in a dataframe. Notice that it expects the variable "obs" to be present in the input dataframe. You can alter the function to use the name of the variable you assigned in your tibble from (a) or you can rename the variable name from (a) to get this function to work. Run the function 5 times to show that it is working. 
+
+```{r}
+
+get_mean <- function(input_df, n){
+  s <- sample_n(input_df, size = n, replace = FALSE) %>%
+    summarize(mean = mean(obs))
+  return(s)
+}
+
+
+get_mean(tibble_bind, 100)
+get_mean(tibble_bind, 100)
+get_mean(tibble_bind, 500)
+get_mean(tibble_bind, 1000)
+get_mean(tibble_bind, 2000)
+get_mean(tibble_bind, 4000)
+
+```
+
+### c)
+
+Write a function called `make_histogram()` that takes a dataframe as input and outputs a histogram. Make sure it will work on the results of the `get_mean()` function above -- this means it should map the x aesthetic to the appropriate variable which represents the mean of the random sample you produce in the `get_mean()` function. Include an additional argument to your function that allows you to change the title of the histogram.  
+
+```{r}
+
+make_histogram <- function(df, t){
+  hist_plot <- ggplot(data = df) +
+                geom_histogram(aes(x = mean)) +
+                theme_bw() +
+                labs(title = t)
+  return(hist_plot)
+} 
+
+
+```
+
+
+### d)
+
+Now, use the `map_dfr()` function to obtain 10000 means from your bimodal distribution with varied sample sizes. Start with 10000 means of 2 random samples, then try 10000 means of 5, 10, 20, and 30 random samples. Each time you obtain your 10000 means, use your `make_histogram()` function to plot the distribution of your means. Make sure you add a title to each histogram so that we can tell how many samples you have drawn to get these means. 
+
+```{r}
+
+
+means_1 <- map_dfr(1:10000, function(x) get_mean(tibble_bind, 2))
+make_histogram(df = means_1, t = " Distribution: Sample Size 2")
+
+
+
+means_2 <- map_dfr(1:10000, function(x) get_mean(tibble_bind, 5))
+make_histogram(df = means_2, t = " Distribution: Sample Size 5")
+
+
+
+means_3 <- map_dfr(1:10000, function(x) get_mean(tibble_bind, 10))
+make_histogram(df = means_3, t = " Distribution: Sample Size 10")
+
+
+
+
+means_4 <- map_dfr(1:10000, function(x) get_mean(tibble_bind, 20))
+make_histogram(df = means_4, t = " Distribution: Sample Size 20")
+
+
+
+means_5 <- map_dfr(1:10000, function(x) get_mean(tibble_bind, 30))
+make_histogram(df = means_5, t = " Distribution: Sample Size 30")
+
+```
+
+
+
+### e)
+
+Based on your results from part (d) above, does the Central Limit Theorem hold? How many samples did you need to use to obtain a distribution of means that approached the normal distribution?
+
+
+Based on your results from part (d) above, the Central Limit Theorem does hold. Starting from 10 samples, the distribution of means started to approach the normal distribution
+
+
+# Question 5
+
+### a)
+
+Use the `tbl_summary()` function from the `gtsummary` package to create a descriptive table summarizing all the **girth** measurements from the biometrics dataset (`biometrics.xls`). Your descriptive table should present the mean, standard deviation, minimum, median, and maximum values for each girth measurement.
+
+For help using `tbl_summary()`, check out the R Video from last week (Week 5).
+
+```{r}
+
+biometrics <- read_xls("biometrics.xls", sheet = 2)
+
+biometrics %>%
+  select(contains("girth")) %>%
+  tbl_summary(
+    statistic = list(all_continuous() ~ "{mean} ({sd}) [{min} {median} {max}]"), 
+     label = list(
+    shoulder_girth ~ "Shoulder Girth",
+    chest_girth ~ "Chest Girth", 
+    waist_girth ~ "Waist Girth", 
+    navel_girth ~ "Navel Girth",
+    hip_girth ~ "Hip Girth",
+    thigh_girth ~ "Thigh Girth",
+    bicep_girth_flexed ~ "Bicep Girth Flexed",
+    forearm_girth ~ "Forearm Girth",
+    knee_girth ~ "Knee Girth",
+    calf_girth ~ "Calf Girth",
+    ankle_girth ~ "Ankle Girth",
+    wrist_girth ~ "Wrist Girth"))
+
+
+
+```
+
+### b)
+
+Now split your descriptive table from above by gender.
+
+
+```{r}
+
+biometrics_descriptive <- biometrics %>%
+  select(gender,contains("girth")) %>%
+  tbl_summary(
+    by = gender,
+    statistic = list(all_continuous() ~ "{mean} ({sd}) [{min}, {median}, {max}]"), 
+    label = list(
+       shoulder_girth ~ "Shoulder Girth",
+    chest_girth ~ "Chest Girth", 
+    waist_girth ~ "Waist Girth", 
+    navel_girth ~ "Navel Girth",
+    hip_girth ~ "Hip Girth",
+    thigh_girth ~ "Thigh Girth",
+    bicep_girth_flexed ~ "Bicep Girth Flexed",
+    forearm_girth ~ "Forearm Girth",
+    knee_girth ~ "Knee Girth",
+    calf_girth ~ "Calf Girth",
+    ankle_girth ~ "Ankle Girth",
+    wrist_girth ~ "Wrist Girth"))
+
+print(biometrics_descriptive)
+
+
+
+```
+
+    
+    
+    
+### c)
+
+Lastly, add a column to your table from (b) which tests for mean differences by gender using t-tests that assume equal variances. Once again, if you need an example of how to do this, check out the R Video from last week (Week 5).
+
+```{r}
+
+# Change to a t-test for continuous variables
+
+biometrics_descriptive <- biometrics %>%
+  select(gender,contains("girth")) %>%
+  tbl_summary(
+    by = gender,
+    statistic = list(all_continuous() ~ "{mean} ({sd}) [{min}, {median}, {max}]"), 
+    label = list(
+       shoulder_girth ~ "Shoulder Girth",
+    chest_girth ~ "Chest Girth", 
+    waist_girth ~ "Waist Girth", 
+    navel_girth ~ "Navel Girth",
+    hip_girth ~ "Hip Girth",
+    thigh_girth ~ "Thigh Girth",
+    bicep_girth_flexed ~ "Bicep Girth Flexed",
+    forearm_girth ~ "Forearm Girth",
+    knee_girth ~ "Knee Girth",
+    calf_girth ~ "Calf Girth",
+    ankle_girth ~ "Ankle Girth",
+    wrist_girth ~ "Wrist Girth")) %>%
+  add_p(test = all_continuous() ~ "t.test",
+        test.args = all_tests("t.test") ~ list(var.equal = TRUE))
+
+print(biometrics_descriptive)
+
+
+
+```
+
+### d)
+
+In a sentence, report which variables are significantly different between genders from part (c)
+
+From the p-values, all the variables are significantly different between genders with p-values of <0.001, except for Thigh Girth with a p-value of 0.078. 
+
