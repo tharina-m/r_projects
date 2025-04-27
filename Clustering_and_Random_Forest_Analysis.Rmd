@@ -1,0 +1,437 @@
+---
+title: "Clustering Analysis of Body Measures and Random Forest Modeling for Heart Disease Prediction"
+author: "Tharina Messeroux"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(DALEX)
+library(ranger)
+library(broom)
+library(gtsummary)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(rsample)
+library (caret)
+library(pROC)
+
+```
+
+## Summary
+
+This program presents an analysis involving two clustering techniques—k-means and hierarchical clustering—applied to a body measures dataset. The primary goal is to identify meaningful clusters based on body dimensions such as ankle and wrist diameters. The document also explores the relationship between the clusters and gender using logistic regression. Additionally, a random forest model is fitted to a heart disease dataset, and the document covers tuning, model evaluation with ROC and AUC, variable importance, and individual prediction analysis for heart disease risk.
+
+## Question 1
+
+In this question we will do some k-means and hierarchical clustering of the body measures dataset. 
+
+### a)
+
+Load the body measures dataset into R.
+
+```{r}
+
+body_measures <- read_csv("data/body_measures.csv")
+
+```
+
+### b)
+
+Choose two continuous variables from the body measures dataset to cluster (besides height and weight). Create a nicely labeled scatterplot of these two variables. 
+
+```{r}
+
+ankle_wrist <- body_measures %>%
+  select(ankle_diameter, wrist_diameter)
+
+
+ggplot(data = ankle_wrist) +
+  geom_point(aes(x = ankle_diameter, y = wrist_diameter)) +
+  labs(x = "Ankle Diameter", y = "Wrist Diameter", title = "Ankle vs Wrist Diameter") +
+  theme_bw()
+
+
+
+```
+
+### c)
+
+Now, use k-means clustering to explore possible clusters based on the two variables you have chosen. Perform the k-means clustering algorithm for k = 2 to k = 5 clusters, using at least 500 iterations. For each clustering result, present a scatterplot that differentiates clusters by color. You can adapt the function `fit_k_means()` from this week's videos to do this in an efficient manner.
+
+```{r}
+
+fit_k_means <- function(df, k){
+  k_means_res <- kmeans(df, centers = k, iter.max = 1000)
+  k_means_centers <- as_tibble(k_means_res$centers)
+  total_df <- bind_cols(df, k_means_res$cluster) %>%
+    rename(cluster = 3)
+  plot <- ggplot(data = total_df) +
+    geom_point(aes(x = ankle_diameter, y = wrist_diameter, color = as.factor(cluster))) +
+    theme_bw() +
+    labs(color = "Cluster") +
+    theme(legend.position = "bottom") + 
+    labs(x = "Ankle Diameter", y = "Wrist Diameter", title = "Ankle vs Wrist Diameter")
+  return(plot)
+}
+
+fit_k_means(ankle_wrist, 2)
+
+fit_k_means(ankle_wrist, 3)
+
+fit_k_means(ankle_wrist, 4)
+
+fit_k_means(ankle_wrist, 5)
+
+
+```
+
+### d)
+
+After looking at your results from part (c), what do you think is the most appropriate number of k-means clusters for this data? You should base your decision on what looks best in your series of cluster scatterplots and any possible interpretation of these clusters (there is no wrong answer).
+
+```{r}
+
+
+
+```
+
+
+After looking at my results from part (c), I think the most appropriate number of k-means clusters for this data is 3, it seems the most balanced, and seems to be the most intuitive split to me 
+
+
+### e)
+
+Repeat the clustering process using hierarchical clustering, once again exploring 2 to 5 clusters based on two variables from the body measures dataset. You can use the same variables you used for k-means clustering, or you can explore two different variables (just not height and weight). For each clustering attempt, present a scatterplot with the clusters identified by color. You can adapt the `fit_hier()` function from this week's videos to do this in a streamlined way.
+
+```{r}
+
+
+
+
+fit_hier <- function(df, k){
+  hier_res <- hclust(dist(df))
+  hier_k_df <- ankle_wrist %>%
+    mutate(cluster = cutree(hier_res, k = k))
+  plot <- ggplot(data = hier_k_df) +
+    geom_point(aes(x = ankle_diameter, y = wrist_diameter, color = as.factor(cluster))) +
+    theme_bw() +
+    labs(x = "Ankle Diameter", y = "Wrist Diameter", title = "Ankle vs Wrist Diameter") +
+    labs(color = "Cluster") +
+    theme(legend.position = "bottom")
+  return(plot)
+}
+
+
+fit_hier(ankle_wrist, 2)
+
+fit_hier(ankle_wrist, 3)
+
+fit_hier(ankle_wrist, 4)
+
+fit_hier(ankle_wrist, 5)
+
+
+
+```
+
+### f)
+
+After looking at your results from part (e), what do you think is the most appropriate number of hierarchical clusters for this data? You should base your decision on what looks best in your series of cluster scatterplots and any possible interpretation of these clusters (there is no wrong answer).
+
+```{r}
+
+
+
+```
+
+
+After looking at my results from part (e), I think the most appropriate number of k-means clusters for this data is 4, it seems the most balanced, and seems to be the most intuitive split to me. Unlike part c, the 3 means split did not seem very balanced across 
+
+
+
+### g)
+
+Often unsupervised learning or clustering is performed as a first step to identify groups of observations and then researchers explore whether these groups are associated with some other variable or outcome of interest.
+
+(1) Select 4 continuous variables of your choice from the body measures dataset (not including height and weight) and perform k-means clustering to cluster observations into 2 groups. 
+
+(2) Report the means of each variable by cluster in a table.
+
+(3) Use logistic regression with gender as an outcome to see whether your created clusters are significantly associated with gender. Report the results of your regression using `tbl_regression()` and explain in a sentence whether your created clusters are significantly associated with gender.
+
+```{r}
+
+# (1) Select 4 continuous variables of your choice from the body measures dataset (not including height and weight) and perform k-means clustering to cluster observations into 2 groups. 
+
+
+joint_diameter <- body_measures %>%
+  select(ankle_diameter, wrist_diameter, elbow_diameter, knee_diameter)
+
+
+k_means_2 <- kmeans(joint_diameter, centers = 2, iter.max = 1000)
+
+# (2) Report the means of each variable by cluster in a table.
+k_means_2$cluster
+
+k_means_2$centers
+
+k_means_centers <- as_tibble(k_means_2$centers)
+
+# (3) Use logistic regression with gender as an outcome to see whether your created clusters are significantly associated with gender. Report the results of your regression using `tbl_regression()` and explain in a sentence whether your created clusters are significantly associated with gender.
+
+# Merging both datasets 
+body_measures_cluster <- bind_cols(body_measures, cluster = k_means_2$cluster)
+
+
+# Making gender into 0 and 1 rather than Male vs Female 
+
+body_measures_cluster <- body_measures_cluster %>%
+  mutate(gender_bin = case_when(gender == "Female" ~ 0,
+                               gender == "Male" ~ 1)) 
+
+# Fit logistic regression model
+logistic_model <- glm(gender_bin ~ cluster, data = body_measures_cluster, family = binomial)
+
+# Summarize regression results
+summary <- tidy(logistic_model) 
+
+tbl_regression(logistic_model, exponentiate = TRUE)
+
+summary
+
+```
+
+With a p-value of <0.001, we can conclude that the created clusters are significantly associated with gender, at level of significance 5%. 
+
+
+
+## Question 2
+
+In this question we will be fitting a random forest model to the heart data from last week's assignment. We will then look at two different ways to examine variable performance in this model -- the overall model variable performance and the most important variables for individual predictions.
+
+### a)
+
+(1) Read in the data in `heart_clean.csv`. The data contains various predictors of heart disease and an indicator variable of whether the disease is present.
+
+(2) Create a factor variable `disease_fac` with "Positive" and "Negative" levels. Ensure that "Positive" is the second level of the factor.
+
+(3) Remove the id variable from the dataset and the original `disease` variable. The ID variable may have been read in as `X1`.
+
+(4) Before you split the data, set the seed to 112 in order to get reproducible results i.e run the line: `set.seed(112)`.
+
+(5) Then split the data into a training and test set using a 75% split. Make sure to stratify the split by the outcome.
+
+```{r}
+# (1) Read in the data in `heart_clean.csv`. The data contains various predictors of heart disease and an indicator variable of whether the disease is present.
+
+heart_clean <- read_csv("data/heart_clean.csv")
+
+
+heart_clean %>%
+  group_by(disease) %>%
+  tally() %>%
+  mutate(percentage = n / sum(n))
+
+
+# (2) Create a factor variable `disease_fac` with "Positive" and "Negative" levels. Ensure that "Positive" is the second level of the factor.
+
+heart_clean <- heart_clean %>%
+  mutate(disease_fac = factor(disease, levels = c(0,1), labels = c("Negative", "Positive")))
+
+
+# (3) Remove the id variable from the dataset and the original `disease` variable. The ID variable may have been read in as `X1`.
+
+heart_clean <- heart_clean %>%
+  select(-...1, -disease)
+
+# (4) Before you split the data, set the seed to 112 in order to get reproducible results i.e run the line: `set.seed(112)`.
+set.seed(112)
+
+# (5) Then split the data into a training and test set using a 75% split. Make sure to stratify the split by the outcome.
+
+
+split_data <- initial_split(heart_clean, prop = 0.75, strata = disease_fac)
+
+train_dat <- training(split_data)
+
+test_dat <- testing(split_data)
+
+
+# Take a look at percentage at in each data set
+train_summary <- train_dat %>%
+  group_by(disease_fac) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+test_summary <- test_dat %>%
+  group_by(disease_fac) %>%
+  summarize(n = n()) %>%
+  mutate(percentage = n / sum(n))
+
+train_summary
+
+test_summary
+
+
+
+```
+
+### b)
+
+Use the training data to fit a random forest model via caret. Your tuning process should use 8-fold cross-validation and should tune the following three hyperparameters over the values below:
+
+- `mtry` from 2 to 10, by 2 (this is the number of random predictors for each tree)
+
+- `min.node.size` from 2 to 10 by 2 (this is the minimum number of observations in each node of the tree)
+
+- `split.rule` either "gini" or "extratrees" (these are two methods for how branches are determined)
+
+__Note: Make sure you use ROC/AUC as your training metric, and that you add the `importance = "impurity"` argument to your `train()` function call so that you can examine variable importance later.__
+
+```{r}
+
+forest_grid <- expand.grid(mtry = seq(from = 2, to = 10, by = 2),
+                           min.node.size = seq(from = 2, to = 10, by = 2),
+                           splitrule = c("gini", "extratrees"))
+
+
+forest_ctl <- trainControl(method = "cv",
+                           number = 10,
+                           summaryFunction = twoClassSummary,
+                           classProbs = TRUE,
+                           savePredictions = "final"
+                           )
+
+forest_mod <- train(disease_fac ~ .,
+                    data = train_dat,
+                    method = "ranger",
+                    trControl = forest_ctl,
+                    tuneGrid = forest_grid,
+                    metric = "ROC",
+                    importance = "impurity"
+                    )
+
+plot(forest_mod)
+
+
+
+```
+
+### c)
+
+Report the tuning parameter values that were selected through the cross-validation process. Then plot the ROC curve and report the AUC with its bootstrapped 95% confidence interval for the final model.
+
+```{r}
+
+forest_mod$bestTune
+
+#Plot
+test_pred <- predict(forest_mod, newdata = test_dat, type = "prob")
+
+test_pred_df <- bind_cols(test_dat, test_pred)
+
+test_roc <- roc(disease_fac ~ Positive, data = test_pred_df)
+
+ggroc(test_roc) +
+  theme_bw() +
+  labs(x = "Specificity", y = "Sensitivity",
+       title = "Random Forest Model Test ROC Curve")
+
+auc(test_roc)
+
+auc_ci <- ci.auc(test_roc, method = 'bootstrap')
+
+auc_ci
+
+auc_string <- str_c("AUC: ",
+                    round(auc_ci[2],3),
+                    " (",
+                    round(auc_ci[1],3),
+                    ", ",
+                    round(auc_ci[3],3),
+                    ")")
+
+ggroc(test_roc) +
+  theme_bw() +
+  labs(x = "Specificity", y = "Sensitivity",
+       title = "Random Forest Model Test ROC Curve") +
+  annotate(geom = "text", x = 0.5, y = 0.3, label = auc_string)
+
+
+```
+
+
+The tuning parameter values that were selected through the cross-validation process are UC: 0.998 (0.994, 1)
+
+### d)
+
+Use the `varImp()` function on your trained model and plot the global variable importance for this model. What variable is the most important according to this plot, and what variable is the least important?
+
+
+```{r}
+
+plot(varImp(forest_mod), top = 10)
+
+```
+
+According to this plot, disease is the most important variable, and fbs is the least important variable. 
+### e)
+
+Now select two random observations from the training dataset and present breakdown plots for each of them using `predict_parts()`. You will have to set up an `explainer()` object in order to do this -- please check the code from this week's lab for steps to do this if you are confused. 
+
+
+```{r}
+
+
+numerical_out <- train_dat %>%
+  mutate(disease_num = case_when(disease_fac == "Negative" ~ 0,
+                               disease_fac == "Positive" ~ 1)) %>%
+  pull(disease_num)
+
+set.seed(5)
+
+forest_explainer <- explain(model = forest_mod,
+                            data = train_dat,
+                            y = numerical_out)
+
+random_obs1 <- slice_sample(test_dat, n = 1)
+
+obs1_breakdown <- predict_parts(forest_explainer,
+                                new_observation = random_obs1)
+
+plot(obs1_breakdown)
+
+random_obs2 <- slice_sample(test_dat, n = 1)
+
+obs2_breakdown <- predict_parts(forest_explainer,
+                                new_observation = random_obs2)
+
+plot(obs2_breakdown)
+
+
+
+```
+
+### f)
+
+(1) What variable was the biggest contributor for the predicted probability of disease for each of your random test observations? 
+
+Sex was the biggest contributor for the predicted probability of disease for my first random test observations. 
+
+st_depression was the biggest contributor for the predicted probability of disease for my first random test observations.
+
+
+(2) Were the variables the same for each individual prediction? 
+
+No, the variables are the same for each individual prediction
+
+(3) Do the high importance variables from the global variable importance plot show up as very important for each of these individual predictions? Describe the differences between the overall importance plot and the two individual prediction breakdown plots. 
+
+Yes, for the both options of random cases, the variables max_heart_rate, angina, and st_depression show up, and they were the top 3 variables in in the importance plot. The overall importance plot shows the importance of each predictor in the outcome on average, so it shows the variable that shows up the most in predicting individual disease statuses. On the other hand, the two individual prediction breakdown plots show which predictors contribute the most in predicting the disease in these individuals specifically. 
