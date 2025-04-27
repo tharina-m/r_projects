@@ -1,0 +1,495 @@
+---
+title: "Longitudinal Data Visualization and Analysis: OCD, Growth, and Biometrics Studies"
+author: " Tharina Messeroux "
+date: "03/01/24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(knitr)
+library(readxl)
+```
+
+## Summary
+This program analyzes three longitudinal datasets. The first focuses on OCD patient YBOCS scores over eight months, using spaghetti and lasagna plots to visualize remission patterns by age group. The second examines growth trends in a randomized clinical trial evaluating a new drug's effect on adolescent height. The third creates multi-variable scatterplots to explore relationships between age and various body girth measurements. Data wrangling, pivoting, faceting, and custom visualizations are used throughout to facilitate insight and interpretation.
+
+## Question 1
+
+You have received data for a small observational study on OCD. Patients were measured using the YBOCS scale over eight months. The YBOCS data is saved in the `data/ocd_longitudinal.csv` file and some basic demographics are stored in the `data/ocd_demos.csv` file.
+
+### a)
+
+Load both datasets into R and join them using a method that will drop any individuals who are not in both datasets. Report the number of variables and the number of observations in this joined dataset.
+
+```{r}
+
+ocd_longitudinal <- read_csv("data/ocd_longitudinal.csv")
+ocd_demos <- read_csv("data/ocd_demos.csv")
+
+ocd <- ocd_longitudinal %>%
+  inner_join(ocd_demos, 
+             by = "study_id")
+
+```
+
+The joined dataset has 11 variables and 15 observations. 
+
+### b)
+
+You want to produce a spaghetti plot which shows YBOCS scores over time for all individuals. In order to do this, you must transform the data from wide to long format. Use `pivot_longer()` to get the data into long format, and then create a spaghetti plot that displays all individuals' YBOCS trajectories over the eight months.
+
+In your spaghetti plot, make sure that:
+(a) the month variable is labeled "Month 1", "Month 2", etc. 
+(b) the x and y axes are labeled and there is an appropriate title
+(c) you have set the opacity (alpha) of the lines to something besides 1
+
+```{r}
+ 
+ocd_long <- ocd %>%
+  pivot_longer(cols = starts_with("ybocs_m"),
+                           names_to = "month", 
+                           values_to = "ybocs_score",
+                           names_transform = list(month = function(x) str_remove(x, "ybocs_m")))
+
+ggplot(data = ocd_long) +
+  geom_line(aes(x = paste("Month", month),
+                y = ybocs_score,
+                group = study_id), alpha = 0.2) +
+  labs (x = "Months", y = "Y-BOCS Score") +
+  theme_bw()
+
+
+```
+
+### c)
+
+The investigators you are working with want to create a new categorical variable called `remission` which equals 1 if the YBOCS score is less than or equal to 15 and 0 otherwise. Use `mutate()` to create this new categorical variable in your long dataset.
+
+```{r}
+
+ocd_long <- ocd_long %>%
+  mutate(remission = if_else (ybocs_score <= 15, 1, 0))
+
+
+```
+
+### d)
+
+Next, create a plot that shows the binary `remission` variable over time for each individual. You can use `geom_tile()` to do this, with month mapped to the X axis, patient ID mapped to the Y axis, and fill mapped to the `remission` variable. This type of plot for a categorical variable is sometimes called a "lasagna" plot in contrast to the earlier "spaghetti" plot you created.
+
+```{r}
+
+
+ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste("Month", month),
+                y = study_id,
+                fill = remission)) +
+  labs (x = "Months", y = "Patient ID") +
+  theme_bw()
+
+
+```
+
+### e)
+
+Improve the lasagna plot from part (d) in the following ways:
+(1) If you have not already, make your ID variable and your remission variable into factor variables when plotting.
+(2) Add an appropriate title to the plot and add titles for the x and y axes.*
+(3) Give the legend an appropriate title and place it at the bottom of the plot.*
+(4) Make the panel background white or blank.*
+(5) Manually set custom colors for the fill aesthetic.*
+(6) Set the color aesthetic in geom_tile() equal to "black". Explain what you think this did!
+
+```{r}
+
+ocd_long <- ocd_long %>%
+  mutate(remission = factor(remission, levels = c("0", "1")))
+
+
+ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste("Month", month),
+                y = study_id,
+                fill = remission), color = "black") +
+  labs (x = "Months", y = "Patient ID", fill = "Remission") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "purple")) 
+
+
+
+```
+
+
+(6) Set the color aesthetic in geom_tile() equal to "black". Explain what you think this did! --> I think this added a black boundary to each cell/observation for `remission`
+
+### f)
+
+Create a new categorical age variable called `age_cat` with two categories: "minor" if the individual is less than 18 years old, and "adult" if the individual is 18 years old or greater. Now facet your plot from (e) by this `age_cat` variable. In your facet_wrap() statement, add a scales = "free" argument. Explain what this did.
+
+```{r}
+
+ocd_long <- ocd_long %>%
+  mutate(age_cat = if_else (age < 18,"minor", "adult"))
+
+ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste("Month", month),
+                y = study_id,
+                fill = remission), color = "black") +
+  labs (x = "Months", y = "Patient ID", fill = "Remission") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "purple")) + 
+  facet_wrap(~age_cat, scales = "free")
+
+
+```
+
+The scales = "free" statement added a different y axis to the "minor" side of the graph, and updated the scales of the graph accordingly with what made sense in the "minor" group. 
+
+### g)
+
+Facet your spaghetti plot in (b) by the new `age_cat` variable. Do you notice any differences in YBOCS score trajectories between adults and minors based on these spaghetti plots? Answer in a sentence.
+
+```{r}
+
+ggplot(data = ocd_long) +
+  geom_line(aes(x = paste("Month", month),
+                y = ybocs_score,
+                group = study_id), alpha = 0.2) +
+  labs (x = "Months", y = "Y-BOCS Score") +
+  theme_bw() + 
+  facet_wrap(~age_cat)
+
+ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste("Month", month),
+                y = study_id,
+                fill = remission), color = "black") +
+  labs (x = "Months", y = "Patient ID", fill = "Remission") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "purple")) + 
+  facet_wrap(~age_cat, scales = "free")
+
+
+```
+
+There seems to be a difference in the range of the Y-BOCS Score values between adults and minors, it seems like the values for adults have a wider range than the ones of the minors. Most of the values for the minors is from 15 to 20, while the scores for the adults range from 12 to 20.
+
+### h)
+
+Combine your two faceted graphs (spaghetti plot + lasagna plot) from (f) and (g) using the **patchwork** package. Add a title to this combined plot. More information about the patchwork package can be found here: https://patchwork.data-imaginist.com/
+
+```{r}
+#install.packages("patchwork")
+library(patchwork)
+
+ocd_spaghetti <- ggplot(data = ocd_long) +
+  geom_line(aes(x = paste("Month", month),
+                y = ybocs_score,
+                group = study_id), alpha = 0.2) +
+  labs (x = "Months", y = "Y-BOCS Score") +
+  theme_bw() + 
+  facet_wrap(~age_cat)
+
+ocd_lasagna <- ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste("Month", month),
+                y = study_id,
+                fill = remission), color = "black") +
+  labs (x = "Months", y = "Patient ID", fill = "Remission") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "purple")) + 
+  facet_wrap(~age_cat, scales = "free")
+
+ocd_spaghetti + ocd_lasagna
+
+
+
+```
+
+
+### i)
+
+Investigators inform you that the key time windows for remission are months 6, 7, and 8. They want you to create an indicator variable for anyone who is in remission for 2 out of these 3 months. Create this indicator variable called `responder` and then create a faceted lasagna plot by this responder status to check that all of the responders are in remission for 2 out of these 3 months.
+
+```{r}
+
+
+ocd_long <- ocd_long %>%
+  mutate(remission_status = if_else((remission == "1" & (month == 6 | month == 7 | month == 8)), "yes", "no")) %>%
+    group_by(study_id) %>%
+  mutate(responder = case_when(
+    sum(remission_status == "yes") == 2 ~ 1,
+    TRUE ~ 0
+  ))
+
+
+ ggplot(data = ocd_long) +
+  geom_tile(aes(x = paste(month),
+                y = study_id,
+                fill = remission), color = "black") +
+  labs (x = "Months", y = "Patient ID", fill = "Remission") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "purple")) + 
+  facet_wrap(~responder, scales = "free")
+
+
+```
+
+
+
+## Question 2
+
+### a)
+
+A clinical trial is conducted to evaluate the efficacy of a new drug which claims to induce a growth spurt in adolescents. The researchers recruited 50 subjects for the study and they were randomized to either receive the study drug or a sugar pill. Height measurement (in inches) were recorded once a month, beginning at baseline, for 4 consecutive months. The data is contained in two files: `data/growth_demographics.csv` which contains the age and sex of the participants and `data/growth_outcomes.csv` which contains the treatment group and height measurements for each month
+
+Read in the datasets and combine them to create a dataframe that contains all the study data.  
+
+How many variables and observations does the new dataframe have? Please report this in a sentence.
+
+
+```{r}
+
+growth_demographics <- read_csv("data/growth_demographics.csv")
+growth_outcomes <- read_csv("data/growth_outcomes.csv")
+
+growth <- growth_demographics %>%
+  full_join(growth_outcomes, 
+             by = "id")
+
+
+```
+
+The new dataframe has 8 variables and 50 observations 
+
+### b)
+
+What are the proportions of males and females within each treatment group? Use the kable() function to reproduce the table below (you can see the table without knitting by clicking on the "table_temp.JPG" in the file viewer in the lower right. Hint: think about using pivot_wider().
+
+![](table_temp.JPG)
+
+```{r}
+
+growth_proportion <- growth %>%
+  group_by(trx_group) %>%
+  summarise(n_male = sum(sex == "male"), 
+            n_female = sum(sex == "female"), 
+            female = n_female/n(), 
+            male = n_male/n())
+            
+            
+kable(growth_proportion)
+kable(growth_proportion[, c(1, 4, 5)])
+
+
+```
+
+
+### c)
+
+To facilitate visualization, the researchers want the data to be changed from wide to long. Use the appropriate pivot function to create two new variables: "month" and "height". How many variables and observations does the new data frame contain?
+
+```{r}
+
+growth_long <- growth %>%
+  pivot_longer(cols = starts_with("month_"),
+                           names_to = "month", 
+                           values_to = "height",
+                           names_transform = list(month = function(x) str_remove(x, "month_")))
+
+
+```
+
+The new dataframe contains 6 variables and 200 observations 
+
+### d)
+
+Using the long data, create a spaghetti plot to visualize the longitudinal trends in height across month, and use a color mapping to differentiate between treatment groups. Describe any differences you see between individuals in the treatment groups.
+
+```{r}
+
+ggplot(data = growth_long) +
+  geom_line(aes(x = month,
+                y = height, 
+                group = id, 
+                color = trx_group), alpha = 0.2) +
+  labs (x = "Months", y = "Heights") +
+  theme_bw() 
+
+
+```
+
+I don't see much differences you see between individuals in the treatment groups. Both the treatment and placebo group have an upward/positive direction from month 0 to 3 
+
+
+### e)
+
+Make two boxplots using facet_wrap() to visualize the distribution of height across month and treatment group.
+
+```{r}
+
+
+growth_long <- growth_long %>%
+  mutate(month = factor(month, levels = c("0", "1", "2", "3")))
+
+
+ggplot(data = growth_long) +
+  geom_boxplot(aes(x = month,
+                y = height)) +
+  labs (x = "Months", y = "Heights") +
+  theme_bw() +
+  facet_wrap(~ trx_group)
+
+
+```
+
+### f)
+
+After looking at your plots, what do you notice about the effect of time across both treatment groups? Does this make sense given the population and study question?
+
+As time increases, the height of the participants also increases. However, there is a bigger increase in height in the treatment group compared to the placebo group. This pattern is easier to see with the boxplots compared to the spaghetti plots 
+
+
+# Question 3
+
+### a)
+
+You have been asked to use the biometrics data stored in the `biometrics.xls` file to create a single scatterplot that shows age on the x axis and plots ankle girth, calf girth, knee girth, and wrist girth on the y axis simultaneously, with each girth measurement represented by a different colored point. You tell your supervisor this will likely be too much to show in one graph, but they insist you must produce it. 
+
+Use pivot_longer() to prepare the data for this plot, and make sure your x-axis, y-axis, and legend labels have appropriate labels.
+
+```{r}
+biometrics <- read_xls("data/biometrics.xls", sheet = 2)
+
+
+biometrics_long <- biometrics %>%
+  pivot_longer(cols = c("ankle_girth", "calf_girth", "knee_girth", "wrist_girth"),
+               names_to = "measurement",
+               values_to = "girth_measure")
+
+ggplot(data = biometrics_long) +
+  geom_point(aes(x = age,
+                y = girth_measure,
+                color = measurement)) +
+  labs (x = "Age", y = "Girth Measurement") +
+  theme_bw() 
+
+
+```
+
+### b)
+
+Despite the excessive number of points, your supervisor asks you to add navel girth, hip girth, and thigh girth to this plot as well. Edit your pivot_longer call and add these to your scatterplot above. 
+
+```{r}
+
+biometrics_long <- biometrics %>%
+  pivot_longer(cols = c("ankle_girth", "calf_girth", "knee_girth", "wrist_girth", "navel_girth", "hip_girth", "thigh_girth"),
+               names_to = "measurement",
+               values_to = "girth_measure")
+
+ggplot(data = biometrics_long) +
+  geom_point(aes(x = age,
+                y = girth_measure,
+                color = measurement)) +
+  labs (x = "Age", y = "Girth Measurement") +
+  theme_bw() 
+
+
+```
+
+### c)
+
+Is there a better way to plot all of these relationships? Try to produce a better version of (b) that would allow the reader to more easily assess the relationships between age and each one of these girth measurements in a single plot. 
+
+```{r}
+
+biometrics_long <- biometrics %>%
+  pivot_longer(cols = c("ankle_girth", "calf_girth", "knee_girth", "wrist_girth", "navel_girth", "hip_girth", "thigh_girth"),
+               names_to = "measurement",
+               values_to = "girth_measure")
+
+ggplot(data = biometrics_long) +
+  geom_point(aes(x = age,
+                y = girth_measure,
+                color = measurement)) +
+  labs (x = "Age", y = "Girth Measurement") +
+  theme_bw() +
+  facet_wrap(~ measurement)
+
+
+```
+
+
+# Question 4
+
+R was originally designed as a statistical programming language, so it has lots of built-in functionality for simulating distributions and performing statistical tests. In this problem you'll do some simulation.
+
+### a)
+
+For this question, write a function called `null_t_test()` that performs the following operations:
+
+(1) Takes a random sample of 20 observations from a normal distribution, with a mean = 0 and standard deviation = 1 and assigns it to a vector.
+
+(2) Takes another random sample of 20 observations from a normal distribution, with a mean = 0 and standard deviation = 1 and assigns it to another vector.
+
+(3) Performs a t-test with equal variances using the two vectors from (1) and (2). FYI, you can perform a t-test on two vectors of equal length this way: `t.test(vector1, vector2)`
+
+(4) Your function should return the p-value of your t-test rounded to 4 decimal places. 
+
+**Note: your function does not need any input, it can be empty like this: `my_fun()`**
+
+__Once you have the function working, call it twice so we can see it in action__
+
+
+```{r}
+
+
+null_t_test <- function() {
+  vec1 <- rnorm(20, mean = 0, sd = 1)
+  vec2 <- rnorm(20, mean = 0, sd = 1)
+  t_test <- t.test(vec1, vec2)
+  p_value <- round(t_test$p.value, 4)
+  
+    return(p_value)
+}
+
+null_t_test()
+null_t_test()
+
+
+```
+
+### b) 
+
+Run your function 20 times in the code chunk below. Make sure that every time you run the code in this chunk, you run the line with `set.seed(15)` first. This ensures that the random results will be the same each time. 
+
+You can do this by cutting and pasting your function 20 times, or you could try to use map() to repeatedly run your function. If you do, try using map_dbl() since you should be outputting a numeric p-value each time.
+
+__How many times is your t-test significant at a level of significance of 5%?__
+
+```{r}
+library(purrr)
+
+set.seed(15)
+
+# Using map_dbl to repeat 20 times
+p_value <- map_dbl(1:20, ~ null_t_test())
+print(p_value)
+
+```
+
+My t-test significant 3 times at a level of significance of 5% 
+
+### c)
+
+What is going on with the results of (b) above? **Please explain how it is possible that even though both distributions you are drawing from are identical, some of your t-tests show a significant difference.**
+
+That is attributed to the nature of randomness of the two datasets, and how there can be errors in when repeating the t.test multiple times. Even though both distributions are identical, the exact numbers being pulled are different, leading to potential errors. 
