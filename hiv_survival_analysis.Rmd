@@ -1,0 +1,711 @@
+---
+title: "HIV - Survival Analysis"
+author: "Tharina Messeroux"
+date: "2024-05-02"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+## HIV Project 
+
+## Loading Libraries
+```{r libraries}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(ggplot2)
+library(gtsummary)
+library(dplyr)
+library(survival)
+library(ggsurvfit)
+library(survMisc)
+```
+
+
+## R Version Used 
+```{r version used}
+#Finding R version at use for report
+R.version.string
+# [1] "R version 4.3.1 (2023-06-16 ucrt)"
+```
+
+## Importing Data 
+```{r importing data}
+hiv_data <- read_csv("hiv_trt.csv")
+
+head(hiv_data)
+
+```
+
+
+## Missing Values Investigation 
+```{r missing values}
+
+#Taking care of missing variables 
+summary(is.na(hiv_data))
+
+# There are no missing values, if there were I would use some imputation method to account for them, make sure that they are not missign from primary outcome or treatment (or LOCF)
+
+```
+
+## Distribution of Categorical Variables
+```{r dist of cat. variables}
+
+# Summary table for Sex
+sex_distribution <- hiv_data %>%
+  count(sex)
+
+# Summary table for Race/Ethnicity
+race_eth_distribution <- hiv_data %>%
+  count(raceth)
+
+# Summary table for CD4 Stratum at Screening
+strat2_distribution <- hiv_data %>%
+  count(strat2)
+
+# Summary table for IV drug use history
+iv_drug_distribution <- hiv_data %>%
+  count(ivdrug)
+
+# Summary table for Hemophiliac
+hemophil_distribution <- hiv_data %>%
+  count(hemophil)
+
+# Summary table for Karnofsky Performance Scale
+karnof_scale_distribution <- hiv_data %>%
+  count(karnof)
+
+# Summary table for Treatment Groups
+txgrp_distribution <- hiv_data %>%
+  count(txgrp)
+
+# Summary table for Treatment Indicator
+tx_distribution <- hiv_data %>%
+  count(tx)
+
+
+print(sex_distribution)
+print(race_eth_distribution)
+print(strat2_distribution)
+print(iv_drug_distribution)
+print(hemophil_distribution)
+print(karnof_scale_distribution)
+print(txgrp_distribution)
+print(tx_distribution)
+
+
+
+```
+
+## Recategorization 
+```{r recategorizing}
+
+#Combining variables to new categories for the ones that have low categories 
+hiv_data <- hiv_data %>%
+  mutate(race_eth = ifelse(raceth %in% c("3", "4", "5", "6"), "3", raceth),
+         iv_drug = ifelse(ivdrug %in% c("2", "3"), "2", ivdrug),
+         karnof_scale = ifelse(karnof %in% c("70", "80"), "80", karnof))
+# Checking if Recategorization done correctly:
+#Race
+
+# New Race Count 
+race_counts <- hiv_data %>%
+  group_by(race_eth) %>%
+  summarize(count = n())
+
+# Print the results
+print(race_counts)
+
+# Old Race Count 
+raceth_counts <- hiv_data %>%
+  group_by(raceth) %>%
+  summarize(count = n())
+
+# Print the results
+print(raceth_counts)
+
+#IV Drug Use
+
+# New IV Drug Use 
+iv_drug_counts <- hiv_data %>%
+  group_by(iv_drug) %>%
+  summarize(count = n())
+
+# Print the results
+print(iv_drug_counts)
+
+# Old IV Drug Use 
+ivdrug_counts <- hiv_data %>%
+  group_by(ivdrug) %>%
+  summarize(count = n())
+
+# Print the results
+print(ivdrug_counts)
+
+#Karnof Scale
+
+# New Karnof
+karnof_scale_counts <- hiv_data %>%
+  group_by(karnof_scale) %>%
+  summarize(count = n())
+
+# Print the results
+print(karnof_scale_counts)
+
+# Old Karnof
+karnof_counts <- hiv_data %>%
+  group_by(karnof) %>%
+  summarize(count = n())
+
+# Print the results
+print(karnof_counts)
+
+# Deleting varaibles for old categories 
+hiv_data <- hiv_data %>%
+  select(-raceth, -ivdrug, -karnof)
+
+```
+
+
+## Labeling Categories
+```{r labeling categories}
+
+#Sex
+hiv_data <- hiv_data %>%
+  mutate(sex = case_when(
+    sex == 1 ~ "Male",
+    sex == 2 ~ "Female"))
+
+#Race/Ethnicity
+hiv_data <- hiv_data %>%
+  mutate(race_eth = case_when(
+    race_eth == 1 ~ "White Non-Hispanic",
+    race_eth == 2 ~ "Black Non-Hispanic",
+    race_eth == 3 ~ "Other"))
+
+#CD4 Stratum at Screening
+hiv_data <- hiv_data %>%
+  mutate(strat2 = case_when(
+    strat2 == 0 ~ "CD4 ≤ 50",
+    strat2 == 1 ~ "CD4 > 50"))
+
+#IV drug use history 
+hiv_data <- hiv_data %>%
+  mutate(iv_drug = case_when(
+    iv_drug == 1 ~ "Never",
+    iv_drug == 2 ~ "Currently/Previously"))
+
+#Hemophiliac
+hiv_data <- hiv_data %>%
+  mutate(hemophil = case_when(
+    hemophil == 0 ~ "No",
+    hemophil == 1 ~ "Yes"))
+
+#Karnofsky Performance Scale
+hiv_data <- hiv_data %>%
+  mutate(karnof_scale = case_when(
+    karnof_scale == "80" ~ "70 or 80",
+    karnof_scale == "90" ~ "90", 
+    karnof_scale == "100" ~ "100"))
+
+#Factoring Karnofsky Performance Scale
+hiv_data$karnof_scale <- factor(hiv_data$karnof_scale,
+                                 levels = c("70 or 80", "90", "100"),
+                                 labels = c("70 or 80", "90", "100"))
+#Treatment Groups
+hiv_data <- hiv_data %>%
+  mutate(txgrp = case_when(
+    txgrp == 1 ~ "ZDV+3TC",
+    txgrp == 2 ~ "ZDV+3TC+IDV", 
+    txgrp == 3 ~ "d4T+3TC", 
+    txgrp == 4 ~ "d4T+3TC+IDV"))
+
+#Treatment Indicator
+hiv_data <- hiv_data %>%
+  mutate(tx= case_when(
+    tx == 0 ~ "Control Group",
+    tx == 1 ~ "Treatment includes IDV"))
+
+```
+
+
+## Distribution of Continuous Variables
+```{r distributions continuous}
+# Age - Normal - display mean
+ggplot(data = hiv_data, aes(x = age)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of Age",
+       x = "Age",
+       y = "Frequency")
+
+# cd4 - right skewed - display median (mix/max or q1/q3?)
+ggplot(data = hiv_data, aes(x = cd4)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of cd4",
+       x = "cd4",
+       y = "Frequency")
+
+# priorzdv - right skewed - display median (mix/max or q1/q3?)
+ggplot(data = hiv_data, aes(x = priorzdv)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of priorzdv",
+       x = "priorzdv",
+       y = "Frequency")
+
+```
+
+
+## Distribution of Categorical Variables (post-recategorization)
+``` {r distributions categorical}
+
+# Investigating categorical variables 
+summary_stats_categorical <- function(cat_variable, t) {
+  # Frequency Table
+  freq_table <- table(cat_variable)
+  print(freq_table)
+  
+  # Bar Plot
+  barplot(freq_table, 
+          main = t,
+          xlab = "Category",
+          ylab = "Frequency")
+}
+
+
+# Call the function with your binary variable
+summary_stats_categorical(hiv_data$sex, "Frequency Distribution of Gender")
+summary_stats_categorical(hiv_data$race_eth, "Frequency Distribution of Race")
+summary_stats_categorical(hiv_data$strat2, " Frequency Distribution of  CD4 stratum at screening")
+summary_stats_categorical(hiv_data$iv_drug, " Frequency Distribution of IV drug use history")
+summary_stats_categorical(hiv_data$hemophil, "Frequency Distribution of  Hemophilia Status")
+summary_stats_categorical(hiv_data$karnof_scale, "Frequency Distribution of Karnofsky Performance Scale")
+summary_stats_categorical(hiv_data$txgrp, "Frequency Distribution of  Treatment group indicator")
+summary_stats_categorical(hiv_data$tx, "Frequency Distribution of Treatment indicator")
+
+```
+
+
+## Table 1
+```{r table 1}
+
+# Reproducing Table using gtsummary:-- not including txgrp, only has 3 obsevations
+
+descriptive_table <- hiv_data %>%
+  select(age, cd4, priorzdv, sex, race_eth, strat2, iv_drug, hemophil, karnof_scale, tx) %>%
+  tbl_summary(
+    by = tx, 
+    statistic = list(age ~ "{mean} ({sd})",
+                     cd4 ~ "[{min}, {median}, {max}]",
+                     priorzdv ~ "[{min}, {median}, {max}]"),
+    type = list(hemophil ~ "categorical", 
+                strat2 ~ "categorical"),
+    label = list(
+      age ~ "Age",
+      sex ~ "Sex",
+      race_eth ~ "Race/Ethnicity",
+      strat2 ~ "CD4 Stratum at Screening",
+      iv_drug ~ "IV drug use history",
+      hemophil ~ "Hemophiliac", 
+      karnof_scale ~ "Karnofsky Performance Scale", 
+      cd4 ~ "Baseline CD4 count 
+(Cells/milliliter)",
+priorzdv ~ "Months of prior ZDV use"
+)
+  ) %>%
+  add_overall() %>%
+  add_p()
+
+# Print the summary table
+descriptive_table
+
+# Remove tx from predictors 
+
+```
+
+
+## PFS: Log Rank Test and KM Curve
+``` {r PFS log rank and KM}
+
+# PFS
+# log-rank test -- is there significant difference in survival curves between treatment groups? p= 0.00117 so yes, there is 
+
+print(survdiff(Surv(time, censor) ~ tx, data = hiv_data),
+      digits=5)
+
+
+# Calculate the survival rates by treatment groups 
+survival_by_tx <- survfit(Surv(time, censor) ~ tx,
+                            data = hiv_data,
+                            type = "kaplan-meier", 
+                            conf.type = "log-log") 
+print(survival_by_tx)
+summary(survival_by_tx)
+
+#Plotting K-M curves
+survfit2(Surv(time, censor) ~ tx, data = hiv_data) %>%
+  ggsurvfit() +
+  labs (
+    x = "Days",
+    y = "Progression Free survival probability",
+  ) +
+  add_pvalue(location="annotation",
+             caption="Log-rank {p.value}")
+
+
+```
+
+## PFS: Univariate Analysis
+``` {r Cox univariate analysis PFS}
+
+# Cox Proportinal Hazard Model to assess the association between predictor of interest and survival
+#Univariate Analysis:
+
+fitModel1 = coxph(Surv(time, censor) ~ tx, data = hiv_data,ties="efron")
+summary(fitModel1)
+tbl_regression(fitModel1, exponentiate = TRUE)
+
+
+fitModel1grp = coxph(Surv(time, censor) ~ txgrp, data = hiv_data,ties="efron")
+summary(fitModel1grp)
+tbl_regression(fitModel1grp, exponentiate = TRUE)
+
+fitModel1sex = coxph(Surv(time, censor) ~ sex, data = hiv_data,ties="efron")
+summary(fitModel1sex)
+tbl_regression(fitModel1sex, exponentiate = TRUE)
+
+
+fitModel1age = coxph(Surv(time, censor) ~ age, data = hiv_data,ties="efron")
+summary(fitModel1age)
+tbl_regression(fitModel1age, exponentiate = TRUE)
+
+
+fitModel1raceth = coxph(Surv(time, censor) ~ race_eth, data = hiv_data,ties="efron")
+summary(fitModel1raceth)
+tbl_regression(fitModel1raceth, exponentiate = TRUE)
+
+
+fitModel1ivdrug = coxph(Surv(time, censor) ~ iv_drug, data = hiv_data,ties="efron")
+summary(fitModel1ivdrug)
+tbl_regression(fitModel1ivdrug, exponentiate = TRUE)
+
+
+fitModel1hemophil = coxph(Surv(time, censor) ~ hemophil, data = hiv_data,ties="efron")
+summary(fitModel1hemophil)
+tbl_regression(fitModel1hemophil, exponentiate = TRUE)
+
+
+fitModel1karnof = coxph(Surv(time, censor) ~ karnof_scale, data = hiv_data,ties="efron")
+summary(fitModel1karnof)
+tbl_regression(fitModel1karnof, exponentiate = TRUE)
+
+
+fitModel1strat2 = coxph(Surv(time, censor) ~ strat2, data = hiv_data,ties="efron")
+summary(fitModel1strat2)
+tbl_regression(fitModel1strat2, exponentiate = TRUE)
+
+
+fitModel1cd4 = coxph(Surv(time, censor) ~ cd4, data = hiv_data,ties="efron")
+summary(fitModel1cd4)
+tbl_regression(fitModel1cd4, exponentiate = TRUE)
+
+
+fitModel1priorzdv = coxph(Surv(time, censor) ~ priorzdv, data = hiv_data,ties="efron")
+summary(fitModel1priorzdv)
+tbl_regression(fitModel1priorzdv, exponentiate = TRUE)
+
+```
+
+## PFS: Multivariate Analysis
+```{r multivariate analysis PFS}
+
+#Multivariate Analysis 
+#Fitting cox model for all variables to assess the association between predictor of interest and survival adjusting for other variables 
+fitcoxall = coxph(Surv(time, censor) ~ tx + sex + age + race_eth + iv_drug + hemophil + karnof_scale +
+                                      strat2 + cd4 + priorzdv, data = hiv_data,ties = "efron")
+summary(fitcoxall)
+tbl_regression(fitcoxall, exponentiate = TRUE)
+
+
+#Fitting cox model for all significant variables in univariate analysis (karnof_scale, start2, cd4) + sex and age
+
+fitcox = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + strat2 + cd4,
+                                    data = hiv_data,ties = "efron")
+
+summary(fitcox)
+tbl_regression(fitcox, exponentiate = TRUE)
+
+```
+
+## PFS: Model Selection
+``` {r model selection PFS}
+
+# compare 2 models -- fitModel1 vs fitcox
+# LRT between univariate (fitModel1) vs model with significant + sex + age (fitcox)
+
+#LRT Model 1 - univariate with just treatment:
+fitModel1 = coxph(Surv(time, censor)~tx, data = hiv_data,ties="efron")
+tbl_regression(fitModel1, exponentiate = TRUE)
+
+# Calculating the log-likelihood of fitModel1 to see how well the model fits the data.
+logLik(fitModel1)
+
+#LRT Model - all significant variables in univariate analysis (karnof_scale, start2, cd4) + sex and age
+fitcox = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + strat2 + cd4, 
+                                    data = hiv_data,ties = "efron")
+# Calculating the log-likelihood of fitcox to see how well the model fits the data
+logLik(fitcox)
+
+#Comparing both models:
+1-pchisq(as.numeric(-2*(logLik(fitModel1)-logLik(fitcox))),df=5)
+
+#The degrees of freedom for the LRT is the difference in the number of parameters between the two models. (6-1 = 5)
+# P-value is below 0.05, so rejecting the null hypothesis in favor of the alternative, suggesting that the more complex model (fitcox) provides a significantly better fit than the simpler model (fitModel1).
+
+# compare 2 models -- fitcoxfinal vs fitcox
+
+# Final Model Selection prior to interaction testing --> (only include significant variables from multivariate above vs original multivatiate)
+fitcoxfinal = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4,
+                                        data = hiv_data,ties = "efron")
+summary(fitcoxfinal)
+tbl_regression(fitcoxfinal, exponentiate = TRUE)
+
+# Calculating the log-likelihood of fitcoxfinal and fitcox to see how well the model fits the data
+logLik(fitcoxfinal)
+logLik(fitcox)
+
+#Comparing both models:
+1-pchisq(as.numeric(-2*(logLik(fitcox)-logLik(fitcoxfinal))),df=1)
+
+# Result, no difference between them, so choosing more parsimonious model w/o start2 --> fitcoxfinal
+
+```
+
+## PFS: Interaction Tests 
+```{r interaction testing PFS}
+# Add interaction term for significant variables 
+
+# Interaction with age
+fitModelInt = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4 + tx*age,
+                                        data = hiv_data, ties = "efron")
+
+logLik(fitModelInt)
+logLik(fitcoxfinal)
+1-pchisq(as.numeric(-2*(logLik(fitcox)-logLik(fitModelInt))),df=1)
+
+# Interaction with karnof
+fitModelInt1 = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4 + tx*karnof_scale,
+                                        data = hiv_data, ties = "efron")
+
+logLik(fitModelInt1)
+logLik(fitcoxfinal)
+1-pchisq(as.numeric(-2*(logLik(fitcox)-logLik(fitModelInt1))),df=1)
+
+# Interaction with cd4
+fitModelInt2 = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4 + tx*cd4,
+                                        data = hiv_data, ties = "efron")
+
+logLik(fitModelInt2)
+logLik(fitcoxfinal)
+1-pchisq(as.numeric(-2*(logLik(fitcox)-logLik(fitModelInt2))),df=1)
+
+# Interaction with sex
+fitModelInt3 = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4 + tx*sex,
+                                        data = hiv_data, ties = "efron")
+
+logLik(fitModelInt3)
+logLik(fitcoxfinal)
+1-pchisq(as.numeric(-2*(logLik(fitcox)-logLik(fitModelInt3))),df=1)
+#tested all interactions and there is no significant difference in models 
+
+```
+
+## PFS: Final Model Selected + Results
+```{r final model PFS}
+
+# Final Model selected: 
+fitcoxfinal <-  coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale + cd4,
+                                        data = hiv_data, ties = "efron")
+summary(fitcoxfinal)
+
+tbl_regression(fitcoxfinal, exponentiate = TRUE)
+
+```
+
+## OS: Log Rank Test and KM Curve
+```{r overall survival}
+
+# Overall Survival 
+
+# log-rank test
+print(survdiff(Surv(time_d, censor_d) ~ tx, data = hiv_data),
+      digits=5)
+
+# Calculate the survival rates by treatment groups 
+survival_by_tx_OS <- survfit(Surv(time_d, censor_d) ~ tx,
+                            data = hiv_data,
+                            type = "kaplan-meier", 
+                            conf.type = "log-log") 
+print(survival_by_tx_OS)
+summary(survival_by_tx_OS)
+
+
+#Plotting K-M curves
+survfit2(Surv(time_d, censor_d) ~ tx, data = hiv_data) %>%
+  ggsurvfit() +
+  labs (
+    x = "Days",
+    y = "Overall survival probability",
+  ) +
+  add_pvalue(location="annotation",
+             caption="Log-rank {p.value}")
+
+```
+
+## OS: Univariate Analysis
+```{r univariate analysis OS}
+
+#Univariate Analysis:
+fitModel1OS = coxph(Surv(time_d, censor_d)~tx, data=hiv_data,ties="efron")
+summary(fitModel1OS)
+tbl_regression(fitModel1OS, exponentiate = TRUE)
+
+fitModel1OStxgrp = coxph(Surv(time_d, censor_d)~txgrp, data=hiv_data,ties="efron")
+summary(fitModel1OStxgrp)
+tbl_regression(fitModel1OStxgrp, exponentiate = TRUE)
+
+fitModel1sexOS = coxph(Surv(time_d, censor_d)~ sex, data=hiv_data,ties="efron")
+summary(fitModel1sexOS)
+tbl_regression(fitModel1sexOS, exponentiate = TRUE)
+
+fitModel1ageOS = coxph(Surv(time_d, censor_d)~ age, data=hiv_data,ties="efron")
+summary(fitModel1ageOS)
+tbl_regression(fitModel1ageOS, exponentiate = TRUE)
+
+fitModel1racethOS = coxph(Surv(time_d, censor_d)~ race_eth, data=hiv_data,ties="efron")
+summary(fitModel1racethOS)
+tbl_regression(fitModel1racethOS, exponentiate = TRUE)
+
+fitModel1ivdrugOS = coxph(Surv(time_d, censor_d)~ iv_drug, data=hiv_data,ties="efron")
+summary(fitModel1ivdrugOS)
+tbl_regression(fitModel1ivdrugOS, exponentiate = TRUE)
+
+fitModel1hemophilOS = coxph(Surv(time_d, censor_d)~ hemophil, data=hiv_data,ties="efron")
+summary(fitModel1hemophilOS)
+tbl_regression(fitModel1hemophilOS, exponentiate = TRUE)
+
+fitModel1karnofOS = coxph(Surv(time_d, censor_d)~ karnof_scale, data=hiv_data,ties="efron")
+summary(fitModel1karnofOS)
+tbl_regression(fitModel1karnofOS, exponentiate = TRUE)
+
+fitModel1strat2OS = coxph(Surv(time_d, censor_d)~ strat2, data=hiv_data,ties="efron")
+summary(fitModel1strat2OS)
+tbl_regression(fitModel1strat2OS, exponentiate = TRUE)
+
+fitModel1cd4OS = coxph(Surv(time_d, censor_d)~ cd4, data=hiv_data,ties="efron")
+summary(fitModel1cd4OS)
+tbl_regression(fitModel1cd4OS, exponentiate = TRUE)
+
+fitModel1priorzdvOS = coxph(Surv(time_d, censor_d)~ priorzdv, data=hiv_data,ties="efron")
+summary(fitModel1priorzdvOS)
+tbl_regression(fitModel1priorzdvOS, exponentiate = TRUE)
+
+```
+
+## OS: Multivariate Analysis
+```{r multivariate analysis OS}
+
+# Multivariate Analysis w/ all covariates 
+fitcoxOSall = coxph(Surv(time_d, censor_d) ~ tx + sex + age + race_eth + iv_drug + hemophil + karnof_scale + strat2 + cd4 + priorzdv,
+               data=hiv_data,ties="efron")
+tbl_regression(fitcoxOSall, exponentiate = TRUE)
+
+# Only Significant + sex and age
+fitcoxOS = coxph(Surv(time_d, censor_d) ~ tx + sex + age + karnof_scale + strat2 + cd4,
+                 data=hiv_data,ties="efron")
+summary(fitcoxOS)
+tbl_regression(fitcoxOS, exponentiate = TRUE)
+
+
+```
+
+## OS: Model Selection
+```{r model selection OS}
+
+# compare 2 models --> fitModel1OS vs fitcoxOS
+# LRT 
+#LRT Model 1:
+fitModel1OS = coxph(Surv(time_d, censor_d) ~ tx, data = hiv_data,ties="efron")
+
+#LRT Univariate 
+logLik(fitModel1OS)
+
+# LRT Only Significant + sex and age
+logLik(fitcoxOS)
+
+#Compare both
+1-pchisq(as.numeric(-2*(logLik(fitModel1OS)-logLik(fitcoxOS))),df=5)
+
+
+# Final Model Selection prior to interaction testing --  (only include significant variables from multivariate above vs original multivatiate)
+
+# Only significant from multivariate
+fitcoxfinalOS = coxph(Surv(time, censor) ~ tx + sex + age + karnof_scale,
+                                          data = hiv_data, ties = "efron")
+summary(fitcoxfinalOS)
+tbl_regression(fitcoxfinalOS, exponentiate = TRUE)
+
+
+# LRT for each model 
+logLik(fitcoxfinalOS)
+logLik(fitcoxOS)
+
+#Compare them 
+1-pchisq(as.numeric(-2*(logLik(fitcoxOS)-logLik(fitcoxfinalOS))),df=2)
+# Result, no difference between them, so choosing more parsimonious
+
+```
+
+## OS: Interaction Tests 
+```{r OS interaction testing}
+# Add interaction term for significant variables 
+# Interaction with age
+fitModelIntOS = coxph(Surv(time_d, censor_d) ~ tx + sex + age + karnof_scale + tx*age,
+                                              data = hiv_data, ties = "efron")
+
+logLik(fitModelIntOS)
+logLik(fitcoxOS)
+1-pchisq(as.numeric(-2*(logLik(fitcoxOS)-logLik(fitModelIntOS))),df=1)
+
+# Interaction with karnof
+fitModelInt1OS = coxph(Surv(time_d, censor_d) ~ tx + sex + age + karnof_scale + tx*karnof_scale,
+                                              data = hiv_data, ties = "efron")
+
+logLik(fitModelInt1OS)
+logLik(fitcoxOS)
+1-pchisq(as.numeric(-2*(logLik(fitcoxOS)-logLik(fitModelInt1OS))),df=1)
+
+# Interaction with sex
+fitModelInt2OS = coxph(Surv(time_d, censor_d) ~ tx + sex + age + karnof_scale + tx*sex,
+                                            data = hiv_data, ties="efron")
+
+logLik(fitModelInt2OS)
+logLik(fitcoxOS)
+1-pchisq(as.numeric(-2*(logLik(fitcoxOS)-logLik(fitModelInt2OS))),df=1)
+
+#tested all interactions and there is no significant difference between models 
+
+```
+
+## OS: Final Model Selected + Results
+```{r final OS model}
+# Final Model selected
+fitcoxfinalOS = coxph(Surv(time_d, censor_d) ~ tx + sex + age + karnof_scale,
+                                            data = hiv_data, ties = "efron")
+summary(fitcoxfinalOS)
+
+tbl_regression(fitcoxfinalOS, exponentiate = TRUE)
+
+```
