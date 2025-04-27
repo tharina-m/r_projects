@@ -1,0 +1,318 @@
+---
+title: "Data Cleaning, Custom Functions, and Visualization Practice"
+author: "Tharina Messeroux"
+date: " 02/16/24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(janitor)
+library(ggplot2)
+```
+
+# Summary 
+This program creates custom functions for confidence interval calculation and missing value handling, applies data cleaning procedures across multiple datasets, and produces plot summarizing PHQ-9 depression study results. 
+
+# Question 1
+
+### a) 
+
+Create a function that takes argument `var` and returns a 95% confidence interval for the sample mean of the variable only if the variable is numeric. Otherwise, notify the function user that the entry is non-numeric with a string that says "Input is non-numeric". The equation for a 95% confidence interval is below:
+
+$$\overline{x} \pm z*\frac{s}{\sqrt{n}}$$
+
+Where $\overline{x}$ is the mean, $z$ is the z-score, $s$ is the standard deviation, and $n$ is the number of observations.
+
+__Your function should take as input a vector, and return a vector of length two: the first element should be the lower bound of the confidence interval and the second element should be the upper bound of the confidence interval__
+
+```{r}
+
+CI_95 <- function(var){
+  if(is.numeric(var)){
+    mean <- mean(var)
+    z <- 1.96
+    s <- sd(var)
+    n <- length(var)
+    lower_ci_95 <- mean - (z*s/sqrt(n))
+    upper_ci_95 <- mean + (z*s/sqrt(n))
+    ci_95 <- c(lower_ci_95, upper_ci_95)
+    return(ci_95)
+  }
+  else{
+    return("Input is non-numeric")
+  }
+}
+
+```
+
+### b) 
+
+Test this function on the supplement and length variables from the tooth growth dataset in `ToothGrowth.csv`. You'll have to `pull()` each variable out and then use it in your function.
+
+
+```{r}
+tooth_growth <- read_csv("data/ToothGrowth.csv")
+
+tooth_growth_vec_supp <- tooth_growth %>%
+  pull (Supplement)
+
+tooth_growth_vec_length <- tooth_growth %>%
+  pull (Length)
+
+CI_95(tooth_growth_vec_supp)
+CI_95(tooth_growth_vec_length)
+
+
+```
+
+# Question 2 
+
+### a)
+
+Many datasets are created with missing values labeled as 999 or 9999. Create a function that takes in a value and if it is 999 or 9999 changes it to NA (integer). Test your function on x, y, and z created below.
+
+```{r}
+x = 999
+y = 65
+z = 9999
+```
+
+
+```{r}
+
+convert_to_NA <- function(missing_val){
+  if(missing_val == 999 | missing_val == 9999){
+    return(NA)
+  }
+  else{
+    return(missing_val)
+  }
+}
+
+convert_to_NA(x)
+convert_to_NA(y)
+convert_to_NA(z)
+
+
+```
+
+
+### b) 
+
+Similarly, some datasets will label missing values with two asterisks. Adapt your function so if the input is a character variable it will change all double asterisk signs to NA, and for numeric variables it changes 999 and 9999 to NA. Now, test the function on w, x, y, and z as created below. Explain why it works as it does with each test.
+
+```{r}
+w <- "999"
+x <- "char"
+y <- "**"
+z <- 88
+```
+
+
+```{r}
+
+convert_to_NA <- function(missing_val)
+  {
+    if(is.character(missing_val))
+    {
+     if(missing_val == "**")
+        {
+    return(NA)
+        }
+    }
+  if(is.numeric(missing_val)){
+    if(missing_val == 999 | missing_val == 9999)
+    {
+    return(NA)
+    }
+  }
+    return(missing_val)
+  }
+
+convert_to_NA(w)
+convert_to_NA(x)
+convert_to_NA(y)
+convert_to_NA(z)
+
+```
+
+
+### c) 
+Lastly, to improve your function, ensure it returns appropriate error messages. If the object given is a data frame, rather than an atomic object, have it inform the user (use `is.data.frame()` to test for whether the object is a data frame). Test your updated function with the objects a, b, and c created below.
+
+```{r}
+a <- 6 
+b <- "red"
+c <- tibble(color = c("red", "green", "blue", "**"), number = c(5, 10, 999, 12))
+```
+
+
+```{r}
+
+convert_to_NA <- function(missing_val)
+  {
+    if(is.character(missing_val))
+    {
+     if(missing_val == "**")
+        {
+    return(NA)
+     }
+    }
+       if(is.numeric(missing_val))
+         {
+  if(missing_val == 999 | missing_val == 9999){
+        return(NA)
+    }
+  }
+  if (is.data.frame(missing_val))
+    {
+    return("This is a data frame")
+  } else{
+    return(missing_val)
+    }
+  }
+
+convert_to_NA(a)
+convert_to_NA(b)
+convert_to_NA(c)
+
+
+```
+
+
+# Question 3 
+
+### a)
+
+A collaborator has given you four data sets to analyze (the code below reads in the data). Unfortunately, all four are messy and need cleaning. Rather than clean each individually, write a function which cleans the dataset given as needed. Specifically, your function should:
+
+(1) clean variable names (think of the `clean_names()` function)
+
+(2) remove the extra row
+
+(3) remove the notes variable
+
+(4) drop any rows with missing values (check out the `drop_na()` function)
+
+(5) remove entries with negative heights, lengths, or weights
+
+(6) convert the height, weight, and length variables to numeric
+
+(7) create a new variable called `new_var` which is the product of weight times height times length
+
+```{r}
+
+
+table1 <- read_excel("data/table1.xlsx")
+table2 <- read_excel("data/table2.xlsx")
+table3 <- read_excel("data/table3.xlsx")
+table4 <- read_excel("data/table4.xlsx")
+
+cleaning_function <- function(messy_data){
+  clean_tab <- messy_data %>%
+    janitor::clean_names() %>%
+       filter(table_id != "extra")%>%
+        select (-notes)%>%
+          drop_na() %>%
+            filter(height_in_inches >= 0, weight_in_pounds >= 0, length >= 0) %>%
+      mutate(
+      height_in_inches = as.numeric(height_in_inches),
+      weight_in_pounds = as.numeric(weight_in_pounds),
+      length = as.numeric(length)) %>%
+              mutate(new_var = weight_in_pounds*height_in_inches*length)
+              return(clean_tab)
+}
+
+
+cleaned_table1 <- cleaning_function(table1)
+cleaned_table2 <- cleaning_function(table2)
+cleaned_table3 <- cleaning_function(table3)
+cleaned_table4 <- cleaning_function(table4)
+
+
+```
+
+
+### b)
+
+Combine all 4 resulting datasets (using `bind_rows`) and print the resulting data below using kable.
+
+```{r}
+
+combined_tables<- bind_rows(cleaned_table1, cleaned_table2, cleaned_table3, cleaned_table4)
+
+# Print the combined data using kable
+kable(combined_tables)
+
+```
+
+# Question 4
+
+Your colleague has shared a dataset for a medium sized depression study. This study had two active treatments and a control group over 10 weeks. The main outcome of interest was the PHQ-9 sum score, which can range from 0-27. The data is stored in the `depression_study.csv` file. 
+
+### a)
+
+During a meeting with your colleague they sketch out a graph they would like you to make for an upcoming poster session. Your colleague does not know exactly what the data will look like, but has a general idea of the graph they want. The picture they sketched, along with some notes, is included below in the `graph-sketch.jpg` file. Take a look at it by clicking on it in the file explorer in the lower right hand section of RStudio. 
+
+Important things to notice:*
+(1) Your colleague is interested in mean PHQ-9 by treatment by day. 
+(2) Your colleague wants the x and y axis to have specific ranges, tick marks, and labels. 
+(3) Your colleague wants the colors of the three treatments to be different.
+(4) Your colleague wants the points that represent the three treatments to be different as well -- squares, circles, and triangles.
+(5) Your colleague wants the legend below the plot.
+
+Use what you have learned about data manipulation and plotting to try to create a plot that matches their sketch to the best of your ability. It's okay if it isn't perfect -- but try your best to match what it looks like they wanted. 
+
+
+```{r}
+
+depression <- read_csv("data/depression_study.csv")
+
+# Calculate mean PHQ-9 scores by treatment and day
+mean_phq9 <- depression %>%
+  group_by(treatment, week) %>%
+  summarise(mean_phq9 = mean(phq9))
+
+# Create the plot
+ggplot(mean_phq9, aes(x = week,
+                      y = mean_phq9,
+                      color = treatment,
+                      shape = treatment)) +
+  geom_point() +
+  geom_line()+
+  scale_x_continuous(breaks = 1:10,
+                     labels = paste ("Week", 1:10)) +
+   scale_y_continuous(breaks = seq(0, 27, by = 3),
+                      labels = seq(0, 27, by = 3), 
+                      limits = c(0, 27))+
+  labs(title = "Observed PHQ-9 by treatment group",
+       x = "Week",
+       y = "Mean PHQ-9",
+       color = "Treatment",
+       shape = "Treatment") +
+  theme_bw() +
+  theme(legend.position = "bottom") + 
+    scale_color_manual(values = c("pbo" = "black",
+                                  "trx_a" = "red",
+                                  "trx_b" = "purple"),
+                       labels = c("pbo" = "Placebo",
+                                  "trx_a" = "Treatment A",
+                                  "trx_b" = "Treatment B")) +
+  scale_shape_manual(values = c("pbo" = 16,
+                                "trx_a" = 17,
+                                "trx_b" = 18),
+                     labels = c("pbo" = "Placebo",
+                                "trx_a" = "Treatment A",
+                                "trx_b" = "Treatment B")) 
+
+  
+
+```
+
